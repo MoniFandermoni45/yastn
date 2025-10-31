@@ -18,6 +18,9 @@ from ... import tensordot, vdot, svd_with_truncation, YastnError, Tensor
 from ._peps import Peps2Layers
 from ._gates_auxiliary import Gate, gate_from_mpo
 from ..mps import MpsMpoOBC
+
+import yastn.tn.fpeps as peps
+
 from typing import NamedTuple
 from itertools import pairwise
 import yastn
@@ -218,6 +221,10 @@ def truncate_(env, opts_svd, bond=None,
 
         s0, s1 = bond
         info = {'bond': bond}
+
+        #print(psi[s0].get_shape())
+        #print(psi[s1].get_shape())
+        #print('iter')
 
         if dirn == 'lr':  # Horizontal gate, "lr" ordered
             Q0, R0 = psi[s0].qr(axes=((0, 1, 2, 4), 3), sQ=-1, Qaxis=3)  # t l b rr sa @ rr r
@@ -884,7 +891,11 @@ def apply_predisentangler(env, bond, D_total, max_iter=400, tol=1e-7):
         tmpA = psi[s0]
         tmpB = psi[s1]
 
-        if dirn == 'h':  # Horizontal gate, "lr" ordered
+        # print the dimensions
+        #print(tmpA.get_shape())
+        #print(tmpB.get_shape())
+
+        if dirn == 'h' or 'lr':  # Horizontal gate, "lr" ordered
 
             #Raxis = 0 meaning specified axes go to the front
             Q0d, R0d = tmpA.qr(axes=((0, 1, 2), (3, 4)), sQ=-1)  # t l b rr @ rr r sa
@@ -897,7 +908,10 @@ def apply_predisentangler(env, bond, D_total, max_iter=400, tol=1e-7):
             r1d = R1d.unfuse_legs(axes=1) # l s' a' ll
             r1d = r1d.swap_gate(axes=(2, 3)) # swap_gate a' and ll
 
+            #print('apply iter')
             r0d, r1d, diff, num_of_iter = predisentangler_iter(r0d, r1d, D_total, max_iter, tol)
+            #print('new r0d:', r0d.get_shape())
+            #print('new r1d:', r1d.get_shape())
 
             r0d = r0d.swap_gate(axes=(1, 3)) # swap_gate r and a
             R0d = r0d.fuse_legs(axes=(0, 1, (2, 3)))
@@ -951,6 +965,8 @@ def predisentangler_iter(r0d:yastn.Tensor, r1d:yastn.Tensor, D_total, max_iter, 
 
     for ii in range(max_iter):
 
+        #print('hello')
+
         u, s, v = yastn.svd_with_truncation(r0dr1d, axes=((0, 1, 2), (3, 4, 5)), sU=r0d.s[1], D_total=D_total)
         r0dr1d_new = s.broadcast(u, axes=3)
         r0dr1d_new = yastn.tensordot(r0dr1d_new, v, axes=(3, 0))
@@ -984,7 +1000,9 @@ def build_predisentangler_g(r0dr1d:yastn.Tensor, r0dr1d_conj:yastn.Tensor):
     return Eg
 
 
-def my_evolution_step(env, gates, opts_svd):
+def my_evolution_step(env, gates, opts_svd, method='mpo', fix_metric=0,
+                    pinv_cutoffs=(1e-12, 1e-11, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4),
+                    max_iter=100, tol_iter=1e-13, initialization="EAT_SVD"):
     
     psi = env.psi
     if isinstance(psi, Peps2Layers):
@@ -992,21 +1010,24 @@ def my_evolution_step(env, gates, opts_svd):
 
     infos = []
 
-    if 'nn' in method.lower():
-        gates = [Gate(gate_from_mpo(gate.G), gate.sites) if isinstance(gate.G, MpsMpoOBC) else gate  for gate in gates]
-        gates = [ng for og in gates for ng in split_gate_2site(og)]
-
     for gate in gates:
         psi.apply_gate_(gate)
 
         for s0, s1 in pairwise(gate.sites[-1::-1]):
-            env.pre_truncation_((s0, s1))
+            env.pre_truncation_((s0, s1)) # for now nothing
         if len(gate.sites) > 2:
             for s0, s1 in pairwise(gate.sites):
-                env.pre_truncation_((s0, s1))
+                env.pre_truncation_((s0, s1)) # for now nothing
 
         for s0, s1 in pairwise(gate.sites):
+            # here we'll use the predisentangler info = truncate_(env, opts_svd, (s0, s1), fix_metric, pinv_cutoffs, max_iter, tol_iter, initialization)
+
+            D_total = opts_svd['D_total']
+            bond = peps._geometry.Bond(s0,s1)
+            diff, num_of_iter = apply_predisentangler(env, bond, D_total=D_total, max_iter=max_iter) # this does not perform the truncation # I guess
+            # it only prepair the system to the further evolution ...
+            #info = truncate_(env, opts_svd, (s0, s1), max_iter)
             info = truncate_(env, opts_svd, (s0, s1), fix_metric, pinv_cutoffs, max_iter, tol_iter, initialization)
             infos.append(info)
-
+        
     return infos

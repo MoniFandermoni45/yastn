@@ -1,5 +1,7 @@
 from pycallgraph2 import PyCallGraph, Config
 from pycallgraph2.output import GraphvizOutput
+import cProfile
+import pstats
 
 import yastn
 import yastn.tn.fpeps as peps
@@ -37,8 +39,8 @@ gates = peps.gates.distribute(
 ancilla_psi = peps.product_peps(geometry=geometry, vectors=opt.I())
 
 
-#env = peps.EnvNTU(ancilla_psi, which='NN')
-env = peps.EnvCTM(ancilla_psi)
+env = peps.EnvNTU(ancilla_psi, which='NN')
+#env = peps.EnvCTM(ancilla_psi)
 opts_svd = {'D_total': 5} # works for D_total = 1
 
 #env.ctmrg_(opts_svd=opts_svd)
@@ -49,8 +51,18 @@ opts_svd = {'D_total': 5} # works for D_total = 1
 config = Config(max_depth=2)
 
 def main():
-    env.ctmrg_(opts_svd=opts_svd, method='2site')
-    info = peps.evolution_step_(env, gates=gates, opts_svd=opts_svd)
+    #env.ctmrg_(opts_svd=opts_svd, method='2site')
+    #info = peps.evolution_step_(env, gates=gates, opts_svd=opts_svd)
+    with cProfile.Profile() as pr:
+        for _ in tqdm(range(3)):
+            peps.my_evolution_step(env, gates=gates, opts_svd=opts_svd, max_iter=400)
+            #info = peps.evolution_step_(env, gates=gates, opts_svd=opts_svd)
+            #`print(diff, num_of_iter)
+    
+    stats = pstats.Stats(pr)
+    stats.sort_stats(pstats.SortKey.TIME)
+    stats.print_stats(20)
+
     #print('---------')
     #info = peps.evolution_step_(env, gates=gates, opts_svd=opts_svd)
 
