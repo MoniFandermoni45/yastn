@@ -166,16 +166,25 @@ class EnvNTU:
                    ║
                 (+2 +0)
         """
-        if dirn in ("h", "lr"):
+        if dirn in ("h", "lr"): # for some reason it has two names
             assert self.psi.nn_site(s0, (0, 1)) == s1
             m = {d: self.psi.nn_site(s0, d=d) for d in [(-1,0), (0,-1), (1,0), (1,1), (0,2), (-1,1)]}
-            tensors_from_psi(m, self.psi)
+            tensors_from_psi(m, self.psi) # sets instead of sites, the actual tensors in m
             env_l = edge_l(Q0, hair_l(m[0, -1]))  # [bl bl'] [rr rr'] [tl tl']
             env_r = edge_r(Q1, hair_r(m[0,  2]))  # [tr tr'] [ll ll'] [br br']
             ctl = cor_tl(m[-1, 0])
             ctr = cor_tr(m[-1, 1])
             cbr = cor_br(m[ 1, 1])
             cbl = cor_bl(m[ 1, 0])
+
+            # we will print the dimensions of blocks as well
+            # print('env_l:',env_l.get_shape())
+            # print('env_r:',env_l.get_shape())
+            # print('ctl:',ctl.get_shape())
+            # print('ctr:',ctr.get_shape())
+            # print('cbr:',cbr.get_shape())
+            # print('cbl:',cbl.get_shape())
+
             g = tensordot((cbr @ cbl) @ env_l, (ctl @ ctr) @ env_r, axes=((0, 2), (2, 0)))  # [rr rr'] [ll ll']
         else: # dirn == "v":
             assert self.psi.nn_site(s0, (1, 0)) == s1

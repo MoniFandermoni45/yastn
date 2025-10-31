@@ -26,6 +26,7 @@ __all__ = ['hair_t', 'hair_l', 'hair_b', 'hair_r',
 
 
 def trivial_peps_tensor(config):
+    # each leg represents only one sector (D=1) with a charge represented by zero of the given symmetry
     triv = ones(config, legs=[Leg(config, t=(config.sym.zero(),), D=(1,))])
     for s in (-1, 1, 1, -1):
         triv = triv.add_leg(axis=0, s=s)

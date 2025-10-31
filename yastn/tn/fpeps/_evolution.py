@@ -210,6 +210,8 @@ def truncate_(env, opts_svd, bond=None,
 
     infos = []
     for bond in bonds:
+
+
         dirn = psi.nn_bond_dirn(*bond)
         if dirn in ('rl', 'bt'):
             bond, dirn = bond[::-1], dirn[::-1]  # 'lr' or 'tb'
@@ -237,9 +239,11 @@ def truncate_(env, opts_svd, bond=None,
         else:  # dirn == 'tb':
             psi[s0] = tensordot(Q0, M0, axes=(2, 0)).transpose(axes=(0, 1, 4, 2, 3))  # t l b r sa
             psi[s1] = tensordot(M1, Q1, axes=(1, 0)) # t l b r sa
-
+        
         env.post_truncation_(bond)
         infos.append(Evolution_out(**info))
+
+        #print('gate done')
     return infos[0] if len(bonds) == 1 else infos
 
 def build_g_rj(r_slices:dict, G0:yastn.Tensor):
@@ -882,6 +886,7 @@ def apply_predisentangler(env, bond, D_total, max_iter=400, tol=1e-7):
 
         if dirn == 'h':  # Horizontal gate, "lr" ordered
 
+            #Raxis = 0 meaning specified axes go to the front
             Q0d, R0d = tmpA.qr(axes=((0, 1, 2), (3, 4)), sQ=-1)  # t l b rr @ rr r sa
 
             Q1d, R1d = tmpB.qr(axes=((0, 2, 3), (1, 4)), sQ=1, Qaxis=0, Raxis=-1)  # ll t b r @ l sa ll
@@ -977,3 +982,31 @@ def build_predisentangler_g(r0dr1d:yastn.Tensor, r0dr1d_conj:yastn.Tensor):
     Eg = yastn.tensordot(v.conj(), u.conj(), axes=(0, 2))
     Eg = Eg.transpose(axes=(0, 2, 1, 3))
     return Eg
+
+
+def my_evolution_step(env, gates, opts_svd):
+    
+    psi = env.psi
+    if isinstance(psi, Peps2Layers):
+        psi = psi.ket  # to make it work with CtmEnv
+
+    infos = []
+
+    if 'nn' in method.lower():
+        gates = [Gate(gate_from_mpo(gate.G), gate.sites) if isinstance(gate.G, MpsMpoOBC) else gate  for gate in gates]
+        gates = [ng for og in gates for ng in split_gate_2site(og)]
+
+    for gate in gates:
+        psi.apply_gate_(gate)
+
+        for s0, s1 in pairwise(gate.sites[-1::-1]):
+            env.pre_truncation_((s0, s1))
+        if len(gate.sites) > 2:
+            for s0, s1 in pairwise(gate.sites):
+                env.pre_truncation_((s0, s1))
+
+        for s0, s1 in pairwise(gate.sites):
+            info = truncate_(env, opts_svd, (s0, s1), fix_metric, pinv_cutoffs, max_iter, tol_iter, initialization)
+            infos.append(info)
+
+    return infos

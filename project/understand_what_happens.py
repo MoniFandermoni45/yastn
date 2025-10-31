@@ -1,0 +1,62 @@
+from pycallgraph2 import PyCallGraph, Config
+from pycallgraph2.output import GraphvizOutput
+
+import yastn
+import yastn.tn.fpeps as peps
+import numpy as np
+#import matplotlib.pyplot as plt
+from tqdm import tqdm
+
+from yastn.tn.fpeps.gates import gate_nn_Ising, gate_local_field
+
+# Basic (const) parameters
+J = -1
+h = 5e-4
+g = 2.9
+beta = 1.643
+db = 0.01
+
+geometry = peps.CheckerboardLattice()
+
+# load operators:
+opt = yastn.operators.Spin12(sym='dense')
+
+ZZ_gate = gate_nn_Ising(J, db/2, opt.I(), opt.z())
+Z_gate  = gate_local_field(h, db/2, opt.I(), opt.z())
+X_gate  = gate_local_field(g, db/2, opt.I(), opt.x())
+
+gates = peps.gates.distribute(
+    geometry=geometry,
+    gates_nn=[ZZ_gate],
+    gates_local=[Z_gate, X_gate],
+    symmetrize=True
+)
+
+
+# initialize the system in the product state (infinite temperature)
+ancilla_psi = peps.product_peps(geometry=geometry, vectors=opt.I())
+
+
+#env = peps.EnvNTU(ancilla_psi, which='NN')
+env = peps.EnvCTM(ancilla_psi)
+opts_svd = {'D_total': 5} # works for D_total = 1
+
+#env.ctmrg_(opts_svd=opts_svd)
+#print(env.get_bond_dimensions())
+
+
+
+config = Config(max_depth=2)
+
+def main():
+    env.ctmrg_(opts_svd=opts_svd, method='2site')
+    info = peps.evolution_step_(env, gates=gates, opts_svd=opts_svd)
+    #print('---------')
+    #info = peps.evolution_step_(env, gates=gates, opts_svd=opts_svd)
+
+if __name__ == '__main__':
+    main()
+
+#with PyCallGraph(output=GraphvizOutput(output_file='call_graph_depth=2.png')):
+#    evolution_step()
+
