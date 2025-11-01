@@ -32,13 +32,13 @@ gates = peps.gates.distribute(
 
 
 # initialize the system in the product state (infinite temperature)
-ancilla_psi = peps.product_peps(geometry=geometry, vectors=opt.I())
+#ancilla_psi = peps.product_peps(geometry=geometry, vectors=opt.I())
 
 
 #env = peps.EnvNTU(ancilla_psi, which='NN')
-env = peps.EnvCTM(ancilla_psi, init='eye')
+#env = peps.EnvCTM(ancilla_psi, init='eye')
 
-opts_svd = {'D_total': 5} # works for D_total = 1
+#opts_svd = {'D_total': 5} # works for D_total = 1
 
 
 
@@ -47,14 +47,19 @@ def main():
     #print('---------')
     #info = peps.evolution_step_(env, gates=gates, opts_svd=opts_svd)
 
-    opts_svd = {'D_total': 5}
-    info = env.ctmrg_(opts_svd=opts_svd, max_sweeps=200, )
+    #opts_svd = {'D_total': 5}
+    #info = env.ctmrg_(opts_svd=opts_svd, max_sweeps=200, )
 
-    print(type(env.psi))
-    siteA = env.psi.sites()[0]
-    siteB = env.psi.sites()[1]
-    print(siteA, siteB)
-    print(env[siteA].tl.to_dense())
+    #print(type(env.psi))
+    #siteA = env.psi.sites()[0]
+    #siteB = env.psi.sites()[1]
+    #print(siteA, siteB)
+    #print(env[siteA].tl.to_dense())
+
+    # how does the swap gate works:
+    my_config = yastn.make_config(sym='dense')
+    leg = yastn.Leg(my_config, s=1, t=(), D=(2,))
+    yastn.rand(my_config, legs=[leg, leg.conj()])
 
 if __name__ == '__main__':
     main()

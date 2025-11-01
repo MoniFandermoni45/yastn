@@ -11,7 +11,7 @@ J = -1
 h = 5e-4
 g = 2.9
 beta = 1.643
-db = 0.01
+db = 0.001
 
 geometry = peps.CheckerboardLattice()
 
@@ -60,7 +60,7 @@ def main():
     truncation_error5 = get_truncation_errors(beta, db, D=5)
     truncation_error4 = get_truncation_errors(beta, db, D=4)
 
-    np.savez('data/errors_ising_01_NN+_withPredisentangler.npz', 
+    np.savez('data/errors_ising_001_NN+_withPredisentangler.npz', 
             trunc6= truncation_error6,
             trunc5= truncation_error5,
             trunc4= truncation_error4,

@@ -909,6 +909,9 @@ def apply_predisentangler(env, bond, D_total, max_iter=400, tol=1e-7):
             r1d = r1d.swap_gate(axes=(2, 3)) # swap_gate a' and ll
 
             #print('apply iter')
+
+            # we include the section to introduce the EAT procedure
+
             r0d, r1d, diff, num_of_iter = predisentangler_iter(r0d, r1d, D_total, max_iter, tol)
             #print('new r0d:', r0d.get_shape())
             #print('new r1d:', r1d.get_shape())
@@ -1031,3 +1034,175 @@ def my_evolution_step(env, gates, opts_svd, method='mpo', fix_metric=0,
             infos.append(info)
         
     return infos
+
+def my_evolution_step_method2(env, gates, opts_svd, method='mpo', fix_metric=0,
+                    pinv_cutoffs=(1e-12, 1e-11, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4),
+                    max_iter=100, tol_iter=1e-13, initialization="EAT_SVD"):
+    '''
+    Method 2: uses the EAT procedure
+    '''
+    
+    psi = env.psi
+    if isinstance(psi, Peps2Layers):
+        psi = psi.ket  # to make it work with CtmEnv
+
+    infos = []
+
+    for gate in gates:
+        psi.apply_gate_(gate)
+
+        for s0, s1 in pairwise(gate.sites[-1::-1]):
+            env.pre_truncation_((s0, s1)) # for now nothing
+        if len(gate.sites) > 2:
+            for s0, s1 in pairwise(gate.sites):
+                env.pre_truncation_((s0, s1)) # for now nothing
+
+        for s0, s1 in pairwise(gate.sites):
+            # here we'll use the predisentangler info = truncate_(env, opts_svd, (s0, s1), fix_metric, pinv_cutoffs, max_iter, tol_iter, initialization)
+
+            D_total = opts_svd['D_total']
+            bond = peps._geometry.Bond(s0,s1)
+
+            # now before this we need to use the EAT procedure:
+
+            diff, num_of_iter = apply_predisentangler(env, bond, D_total=D_total, max_iter=max_iter) # this does not perform the truncation # I guess
+            # it only prepair the system to the further evolution ...
+            #info = truncate_(env, opts_svd, (s0, s1), max_iter)
+            info = truncate_(env, opts_svd, (s0, s1), fix_metric, pinv_cutoffs, max_iter, tol_iter, initialization)
+            infos.append(info)
+        
+    return infos
+
+def add_EAT_procedure(r0d, r1d, fgf, opts_svd, pinv_cutoffs):
+    """
+    #Truncate R0 @ R1 to bond dimension specified in opts_svd
+    #including information from a product approximation of bond metric.
+
+    Apply product metric on both sides of RR^* == R0dR1d
+    """
+    r0dr1d = yastn.tensordot(r0d, r1d, axes=(1, 0)) # contr. r and l (first idea)
+
+    G = fgf.unfuse_legs(axes=(0, 1))
+    #
+    # rank-1 approximation
+    Gremove = G.remove_zero_blocks()
+    G0, S, G1 = svd_with_truncation(Gremove, axes=((0, 2), (3, 1)), policy='lowrank', D_block=1, D_total=1)
+    #fid = (S.norm() / G.norm()).item()
+    #eat_metric_error = (max(0., 1 - fid ** 2)) ** 0.5
+    #
+    G0 = G0.remove_leg(axis=2)
+    G1 = G1.remove_leg(axis=0)
+    #
+    # make sure it is hermitian
+    G0 = G0 / G0.trace().to_number()
+    G1 = G1 / G1.trace().to_number()
+    G0 = (G0 + G0.H) / 2
+    G1 = (G1 + G1.H) / 2
+    #
+    #F0 = R0.H @ G0 @ R0
+    #F1 = R1 @ G1 @ R1.H
+    #
+    S0, U0 = G0.eigh_with_truncation(axes=(0, 1), tol=min(pinv_cutoffs))
+    S1, U1 = G1.eigh_with_truncation(axes=(0, 1), tol=min(pinv_cutoffs))
+    #
+    #W0, W1 = symmetrized_svd(S0.sqrt() @ U0.H, U1 @ S1.sqrt(), opts_svd, normalize=False)
+    part0 = S0.sqrt() @ U0.H
+    part1 = U1 @ S1.sqrt()
+    #p0, p1 = R0 @ U0, U1.H @ R1
+    
+    # construct R0dR1d_tilde
+    r0dr1d_tilde = part0 @ r0dr1d @ part1
+
+    return r0dr1d_tilde
+
+def decompose_A_and_B(env, bond):
+    diff = 0
+    num_of_iter = 0
+
+    psi = env.psi
+
+    if isinstance(psi, Peps2Layers):
+        psi = psi.ket  # to make it work with CtmEnv
+
+    if bond is None:
+        bonds = psi.bonds()
+    else:
+        bonds = [bond]
+
+    for bond in bonds:
+        dirn = psi.nn_bond_dirn(bond)
+        s0, s1 = bond # if l_ordered else bond[::-1]
+
+        tensor_A = psi[s0]
+        tensor_B = psi[s1]
+
+        if dirn == 'h' or 'lr':  # Horizontal gate, "lr" ordered
+
+            #Raxis = 0 meaning specified axes go to the front
+            # we want to split the last axis before we do the QR
+            tensor_A = tensor_A.unfuse_legs(axes=-1) # t l b r s a <- what we assume
+            tensor_B = tensor_B.unfuse_legs(axes=-1) # t l b r s a
+
+            # perform QR:
+
+            # we can immedietely specify the Q axis, we keep ancillas always at the end
+            Q0d, R0d = tmpA.qr(axes=((0, 1, 2, 4), (3, 5)), sQ=-1, Qaxis=3)  # t l b rr s @ rr r a
+            Q1d, R1d = tmpB.qr(axes=((0, 2, 3, 4), (1, 5)), sQ=1, Qaxis=0, Raxis=1)  # t b r s @ l ll a
+
+            #r0d = R0d.unfuse_legs(axes=2) # rr r s a
+            #r0d = r0d.swap_gate(axes=(1, 3)) # swap_gate r and a
+
+            #r1d = R1d.unfuse_legs(axes=1) # l s' a' ll
+            #r1d = r1d.swap_gate(axes=(2, 3)) # swap_gate a' and ll
+
+            #print('apply iter')
+            return 
+
+            # we include the section to introduce the EAT procedure
+
+            r0d, r1d, diff, num_of_iter = predisentangler_iter(r0d, r1d, D_total, max_iter, tol)
+            #print('new r0d:', r0d.get_shape())
+            #print('new r1d:', r1d.get_shape())
+
+            r0d = r0d.swap_gate(axes=(1, 3)) # swap_gate r and a
+            R0d = r0d.fuse_legs(axes=(0, 1, (2, 3)))
+
+            r1d = r1d.swap_gate(axes=(2, 3))
+            R1d = r1d.fuse_legs(axes=(0, (1, 2), 3))
+
+            tmpA = yastn.tensordot(Q0d, R0d, axes=(3, 0)) # t l b r sa
+
+            tmpB = yastn.tensordot(Q1d, R1d, axes=(0, 2)) # t b r l sa
+            tmpB = tmpB.transpose(axes=(0, 3, 1, 2, 4))   # t l b r sa
+
+        else: # dirn == 'v':  # Vertical gate, "tb" ordered
+
+            Q0d, R0d = tmpA.qr(axes=((0, 1, 3), (2, 4)), sQ=-1)  # t l r bb @ bb b sa
+
+            Q1d, R1d = tmpB.qr(axes=((1, 2, 3), (0, 4)), sQ=1, Qaxis=0, Raxis=-1)  # tt l b r @ t sa tt
+
+            r0d = R0d.unfuse_legs(axes=2) # bb b s a
+            r0d = r0d.swap_gate(axes=(1, 3)) # swap_gate b and a
+
+            r1d = R1d.unfuse_legs(axes=1) # t s' a' tt
+            r1d = r1d.swap_gate(axes=(2, 3)) # swap_gate a' and tt
+
+            r0d, r1d, diff, num_of_iter = predisentangler_iter(r0d, r1d, D_total, max_iter, tol)
+
+            r0d = r0d.swap_gate(axes=(1, 3)) # swap_gate r and a
+            R0d = r0d.fuse_legs(axes=(0, 1, (2, 3)))
+
+            r1d = r1d.swap_gate(axes=(2, 3))
+            R1d = r1d.fuse_legs(axes=(0, (1, 2), 3))
+
+            tmpA = yastn.tensordot(Q0d, R0d, axes=(3, 0)) # t l r b sa
+            tmpA = tmpA.transpose(axes=(0, 1, 3, 2, 4))   # t l b r sa
+
+            tmpB = yastn.tensordot(Q1d, R1d, axes=(0, 2)) # l b r t sa
+            tmpB = tmpB.transpose(axes=(3, 0, 1, 2, 4))   # t l b r sa
+
+
+        psi[s0] = tmpA
+        psi[s1] = tmpB
+
+    return diff, num_of_iter
