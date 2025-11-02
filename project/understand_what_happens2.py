@@ -59,7 +59,8 @@ def main():
     # how does the swap gate works:
     my_config = yastn.make_config(sym='dense')
     leg = yastn.Leg(my_config, s=1, t=(), D=(2,))
-    yastn.rand(my_config, legs=[leg, leg.conj()])
+    my_tensor = yastn.rand(my_config, legs=[leg, leg.conj(), leg])
+    print(my_tensor.s)
 
 if __name__ == '__main__':
     main()

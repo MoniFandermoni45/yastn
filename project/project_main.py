@@ -55,7 +55,7 @@ def get_truncation_errors(t, db, D, method='NN+'):
     errors = []
 
     for _ in tqdm(range(num_steps)):
-        infos = my_evolution_step(env, gates=gates, opts_svd=opts_svd)
+        infos = my_evolution_step(env, gates=gates, opts_svd=opts_svd, methodType='method_2')
         infoss.append(infos)
         errors.append(peps.accumulated_truncation_error(infoss))
     return errors
@@ -66,7 +66,7 @@ def main():
     truncation_error5 = get_truncation_errors(beta, db, D=5)
     truncation_error4 = get_truncation_errors(beta, db, D=4)
 
-    np.savez('data/errors_ising_01_NN+_withPredisentangler_myVersion_check.npz', 
+    np.savez('data/errors_ising_01_NN+_withPredisentangler_myVersion_version_2_.npz', 
             trunc6= truncation_error6,
             trunc5= truncation_error5,
             trunc4= truncation_error4,

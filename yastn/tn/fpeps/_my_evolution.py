@@ -158,7 +158,7 @@ def my_evolution_step(env: peps.EnvNTU, gates, opts_svd, methodType, method='mpo
             # 3. Apply the metric to R0dR1d to get R0dR1d_tilde
 
             # 4. Put this to modified Yintai's procedure -> we get (pre)disentangler
-            R0d, R1d, _, _ = my_apply_predisentangler(R0d, R1d, D_total, methodType=methodType, metric=fgf)
+            R0d, R1d, _, _ = my_apply_predisentangler(R0d, R1d, D_total, methodType=methodType, metric=fgf, pinv_cutoffs=pinv_cutoffs, dirn=dirn)
             tensor_A, tensor_B = contract_back_reduced_tensors(Q0d, Q1d, R0d, R1d, dirn)
 
             tensor_A = tensor_A.fuse_legs(axes=(0,1,2,3,(4,5)))
@@ -177,18 +177,18 @@ def my_evolution_step(env: peps.EnvNTU, gates, opts_svd, methodType, method='mpo
     return infos
 
 
-def my_apply_predisentangler(r0d: yastn.Tensor, r1d: yastn.Tensor, D_total, methodType, metric, max_iter=400, tol=1e-7):
+def my_apply_predisentangler(r0d: yastn.Tensor, r1d: yastn.Tensor, D_total, methodType, metric, pinv_cutoffs, dirn, max_iter=400, tol=1e-7):
     '''
     Helper function, returns updated by application of optimal predisentangler reduced tensors, ready for back contraction
     returns (r0d, r1d, diff, num_of_iter)
     '''
 
     # Update the reduced tensors
-    r0d, r1d, diff, num_of_iter = my_predisentangler_iter(r0d, r1d, D_total, max_iter, methodType=methodType, metric=metric, tol=tol)
+    r0d, r1d, diff, num_of_iter = my_predisentangler_iter(r0d, r1d, D_total, max_iter, methodType=methodType, metric=metric, tol=tol, pinv_cutoffs=pinv_cutoffs, dirn=dirn)
 
     return r0d, r1d, diff, num_of_iter
 
-def my_predisentangler_iter(r0d:yastn.Tensor, r1d:yastn.Tensor, D_total, max_iter, methodType, metric=None, tol=1e-7):
+def my_predisentangler_iter(r0d:yastn.Tensor, r1d:yastn.Tensor, D_total, max_iter, methodType, pinv_cutoffs, dirn, metric=None, tol=1e-7):
     '''
     returns: (
     r0d: "left" reduced tensor,
@@ -206,8 +206,9 @@ def my_predisentangler_iter(r0d:yastn.Tensor, r1d:yastn.Tensor, D_total, max_ite
     #r0dr1d = yastn.transpose(r0dr1d, axes=(0, 2, 1, 3)) # rr ll a a'
 
     # Here we may apply the metric to r0dr1d to include the metric in the optimization process
-    if methodType == 'version_2':
-        r0dr1d = apply_bipartite_metric(fgf=metric, r0dr1d=r0dr1d)
+    if methodType == 'method_2':
+
+        r0dr1d = apply_bipartite_metric(fgf=metric, r0dr1d=r0dr1d, pinv_cutoffs=pinv_cutoffs, dirn=dirn)
 
     for ii in range(max_iter):
 
@@ -252,7 +253,7 @@ def my_predisentangler_iter(r0d:yastn.Tensor, r1d:yastn.Tensor, D_total, max_ite
             # My version    : r0dr1d: rr a ll a'
             #u, s, v = yastn.svd_with_truncation(r0dr1d, axes=((0, 1, 2), (3, 4, 5)), sU=r0d.s[1], D_total=r0d.get_shape(axes=1))
 
-            if methodType == 'version_2':
+            if methodType == 'method_2':
                 # apply the found predisentangler on the original r1dr1d
                 r0dr1d = yastn.tensordot(r0d, r1d, axes=(1,0)) # rr a ll a' (My version) # we construct it back
                 r0dr1d = yastn.tensordot(r0dr1d, g, axes=((1, 3), (1, 3))) # rr ll a a' my version
@@ -285,6 +286,7 @@ def apply_bipartite_metric(fgf, r0dr1d: yastn.Tensor, pinv_cutoffs, dirn):
     '''
     Apply the bipartite metric to r0dr1d tensor
     '''
+    fgf = fgf.g # take the proper tensor
     G = fgf.unfuse_legs(axes=(0, 1)) # lr: rr' ll' rr ll          tb: bb' tt' bb tt
 
     # if the direction if tb change the order of the metric
@@ -296,7 +298,7 @@ def apply_bipartite_metric(fgf, r0dr1d: yastn.Tensor, pinv_cutoffs, dirn):
 
     # rank-1 approximation
     Gremove = G.remove_zero_blocks() # needed for sth?
-    G0, S, G1 = peps.svd_with_truncation(Gremove, axes=((0, 2), (1,3)), policy='lowrank', D_block=1, D_total=1) # split onto two parts
+    G0, S, G1 = yastn.linalg.svd_with_truncation(Gremove, axes=((0, 2), (1,3)), policy='lowrank', D_block=1, D_total=1) # split onto two parts
     #fid = (S.norm() / G.norm()).item()
     #eat_metric_error = (max(0., 1 - fid ** 2)) ** 0.5
 
@@ -315,9 +317,15 @@ def apply_bipartite_metric(fgf, r0dr1d: yastn.Tensor, pinv_cutoffs, dirn):
     # F1 = R1 @ G1 @ R1.H
     #
 
+    # print('G0 signature:', G0.s)
+    # print('G1 signature:', G1.s)
+    if (dirn == 'tb' or dirn == 'v'):
+        G0 = G0.flip_signature()
+        G1 = G1.flip_signature()
+
     # Verify what we are doing actually min(pinv_cutoffs)
-    S0, U0 = G0.eigh_with_truncation(axes=(0, 1), tol=min(pinv_cutoffs))
-    S1, U1 = G1.eigh_with_truncation(axes=(0, 1), tol=min(pinv_cutoffs))
+    S0, U0 = G0.eigh_with_truncation(axes=(0, 1), tol=min(pinv_cutoffs), sU=r0dr1d.s[0])
+    S1, U1 = G1.eigh_with_truncation(axes=(0, 1), tol=min(pinv_cutoffs), sU=r0dr1d.s[2])
 
     S0 = S0.sqrt()
     U0 = S0.broadcast(U0, axes=1) 
@@ -329,6 +337,8 @@ def apply_bipartite_metric(fgf, r0dr1d: yastn.Tensor, pinv_cutoffs, dirn):
     # In my version: r0dr1d: lr : rr a ll a'   or    tt a bb a'
 
     # Apply first part: right or top
+
+    # we should change the signature in the case tb
     r0dr1d = yastn.tensordot(r0dr1d, U0, axes=(0, 0)) # a ll a' rr  (or a bb a' tt)
     r0dr1d = yastn.tensordot(r0dr1d, U1, axes=(1, 0)) # a a' rr ll  (or a a' tt bb)
 
