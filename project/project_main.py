@@ -40,12 +40,41 @@ opts_svd = {'D_total': 5} # works for D_total = 1
 
 
 
+def get_truncation_errors(t, db, D, method='NN+'):
+    '''
+    Get array of truncation errors during imaginary time evolution.
+    beta   : total time of evolution (imaginary)
+    db     : imagiinary time step
+    method : method used (for now only NN+)
+    '''
+    num_steps = int(beta/db)
+    opts_svd = {'D_total': D}
+
+    env = peps.EnvNTU(ancilla_psi, which=method)
+    infoss = []
+    errors = []
+
+    for _ in tqdm(range(num_steps)):
+        infos = my_evolution_step(env, gates=gates, opts_svd=opts_svd)
+        infoss.append(infos)
+        errors.append(peps.accumulated_truncation_error(infoss))
+    return errors
+
 def main():
 
-    my_evolution_step(env, gates=gates, opts_svd=opts_svd, max_iter=400)
-    my_evolution_step(env, gates=gates, opts_svd=opts_svd, max_iter=400)
-    
+    truncation_error6 = get_truncation_errors(beta, db, D=6)
+    truncation_error5 = get_truncation_errors(beta, db, D=5)
+    truncation_error4 = get_truncation_errors(beta, db, D=4)
 
-if __name__ == '__main__':
+    np.savez('data/errors_ising_01_NN+_withPredisentangler_myVersion.npz', 
+            trunc6= truncation_error6,
+            trunc5= truncation_error5,
+            trunc4= truncation_error4,
+            )
+
+    print('done')
+
+if __name__ == "__main__":
     main()
+    
 
