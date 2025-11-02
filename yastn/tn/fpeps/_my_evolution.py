@@ -95,7 +95,7 @@ def contract_back_reduced_tensors(Q0d: yastn.Tensor, Q1d: yastn.Tensor, r0d: yas
         #Q0d: t l b rr s r0d: rr r a
         #Q1d: t ll b r s   r1d: l ll a
         tensor_A = yastn.tensordot(Q0d, r0d, axes=(3, 0)) # t l b s r a  # we use this notation
-        tensor_A = tensor_A.transpose(axes=(0,1,2,5,3,4)) # t l b r s a
+        tensor_A = tensor_A.transpose(axes=(0,1,2,4,3,5)) # t l b r s a
 
         tensor_B = yastn.tensordot(Q1d, r1d, axes=(1, 1)) # t b r s l a
         tensor_B = tensor_B.transpose(axes=(0,4,1,2,3,5)) # t l b r s a
@@ -107,7 +107,7 @@ def contract_back_reduced_tensors(Q0d: yastn.Tensor, Q1d: yastn.Tensor, r0d: yas
         tensor_A = tensor_A.transpose(axes=(0,1,4,2,3,5)) # t l b r s a
 
         tensor_B = yastn.tensordot(Q1d, r1d, axes=(0, 1)) # l b r s t a
-        tensor_B = tensor_B.transpose(axes=(4,1,2,3,5)) # t l b r s a
+        tensor_B = tensor_B.transpose(axes=(4,0,1,2,3,5)) # t l b r s a
     
     return tensor_A, tensor_B
 
@@ -322,7 +322,7 @@ def main():
     opts_svd = {'D_total': 5}
 
 
-    my_evolution_step(env, gates=gates, opts_svd=opts_svd)
+    #my_evolution_step(env, gates=gates, opts_svd=opts_svd)
 
 
     #print(env.psi[(0,0)].get_shape())
@@ -330,13 +330,29 @@ def main():
     #print(env.psi[(0,0)].unfuse_legs(axes=-1)) # the phsical has -1: outgoing, which make sense i guess, ancilla is 1 <- ingoing
 
     # check the first bond
-    # bond_lr = peps._geometry.Bond(peps._geometry.Site(0,0), peps._geometry.Site(0,1))
+    bond_lr = peps._geometry.Bond(peps._geometry.Site(0,0), peps._geometry.Site(1,0))
 
-    # Q0d, R0d, Q1d, R1d = decompose_A_and_B(env, bond_lr)
-    # print('Q0d:', Q0d.get_shape())
-    # print('R0d:', R0d.get_shape())
-    # print('Q1d:', Q1d.get_shape())
-    # print('R1d:', R1d.get_shape())
+    original_tensor_A = ancilla_psi[(0,0)]
+    original_tensor_B = ancilla_psi[(0,1)]
+
+    print('original_tensor_A:', original_tensor_A.get_shape())
+    print('original_tensor_B:', original_tensor_B.get_shape())
+
+    Q0d, R0d, Q1d, R1d = decompose_A_and_B(env, bond_lr)
+    print('Q0d:', Q0d.get_shape())
+    print('R0d:', R0d.get_shape())
+    print('Q1d:', Q1d.get_shape())
+    print('R1d:', R1d.get_shape())
+
+    tensor_A, tensor_B = contract_back_reduced_tensors(Q0d, Q1d, R0d, R1d, dirn='tb')
+    print('tensorA:', tensor_A.get_shape())
+    print('tensorB:', tensor_B.get_shape())
+
+    tensor_A = tensor_A.fuse_legs(axes=(0,1,2,3,(4,5)))
+    tensor_B = tensor_B.fuse_legs(axes=(0,1,2,3,(4,5)))
+
+    print((tensor_A - original_tensor_A).norm())
+    print((tensor_B - original_tensor_B).norm())
 
 if __name__ == '__main__':
     main()
