@@ -66,7 +66,7 @@ def main():
     truncation_error5 = get_truncation_errors(beta, db, D=5)
     truncation_error4 = get_truncation_errors(beta, db, D=4)
 
-    np.savez('data/errors_ising_01_NN+_withPredisentangler_myVersion.npz', 
+    np.savez('data/errors_ising_01_NN+_withPredisentangler_myVersion_check.npz', 
             trunc6= truncation_error6,
             trunc5= truncation_error5,
             trunc4= truncation_error4,

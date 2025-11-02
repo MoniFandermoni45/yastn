@@ -895,7 +895,7 @@ def apply_predisentangler(env, bond, D_total, max_iter=400, tol=1e-7):
         #print(tmpA.get_shape())
         #print(tmpB.get_shape())
 
-        if dirn == 'h' or 'lr':  # Horizontal gate, "lr" ordered
+        if (dirn == 'h' or dirn == 'lr'):  # Horizontal gate, "lr" ordered
 
             #Raxis = 0 meaning specified axes go to the front
             Q0d, R0d = tmpA.qr(axes=((0, 1, 2), (3, 4)), sQ=-1)  # t l b rr @ rr r sa
