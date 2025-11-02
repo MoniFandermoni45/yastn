@@ -85,6 +85,34 @@ def decompose_A_and_B(env, bond):
 
     return Q0d, R0d, Q1d, R1d
 
+def contract_back_reduced_tensors(Q0d: yastn.Tensor, Q1d: yastn.Tensor, r0d: yastn.Tensor, r1d: yastn.Tensor, dirn):
+    '''
+    Contracts back to obtain (tensor_A, tensor_B)
+    They have unfused physical and ancilla indices, so both: t l b r s a
+    '''
+
+    if (dirn == 'lr' or dirn == 'h'): # left right bond / horizontal bond
+        #Q0d: t l b rr s r0d: rr r a
+        #Q1d: t ll b r s   r1d: l ll a
+        tensor_A = yastn.tensordot(Q0d, r0d, axes=(3, 0)) # t l b s r a  # we use this notation
+        tensor_A = tensor_A.transpose(axes=(0,1,2,5,3,4)) # t l b r s a
+
+        tensor_B = yastn.tensordot(Q1d, r1d, axes=(1, 1)) # t b r s l a
+        tensor_B = tensor_B.transpose(axes=(0,4,1,2,3,5)) # t l b r s a
+
+    if (dirn == 'tb' or dirn == 'v'): # top bottom bond / vertical bond
+        #Q0d: t l bb r s r0d: bb b a
+        #Q1d: tt l b r s   r1d: t tt a
+        tensor_A = yastn.tensordot(Q0d, r0d, axes=(2,0)) # t l r s b a
+        tensor_A = tensor_A.transpose(axes=(0,1,4,2,3,5)) # t l b r s a
+
+        tensor_B = yastn.tensordot(Q1d, r1d, axes=(0, 1)) # l b r s t a
+        tensor_B = tensor_B.transpose(axes=(4,1,2,3,5)) # t l b r s a
+    
+    return tensor_A, tensor_B
+
+
+
 # 2. Find the metric of the 
 
 # TODO: change the env type,
@@ -113,9 +141,8 @@ def my_evolution_step(env: peps.EnvNTU, gates, opts_svd, method='mpo', fix_metri
             # 1. Decompose the tensors at Sites s0 at s1
             D_total = opts_svd['D_total']
             bond = peps._geometry.Bond(s0,s1)
-            # print('Doing bond:', bond)
-            # print('site0:', psi[s0].get_shape())
-            # print('site1:', psi[s1].get_shape())
+            
+            # the unfuse of physical and ancilla happens here
             Q0d, R0d, Q1d, R1d = decompose_A_and_B(env, bond)
 
             # 2, Get the metric based on the sites s0, s1
@@ -151,11 +178,10 @@ def my_evolution_step(env: peps.EnvNTU, gates, opts_svd, method='mpo', fix_metri
 def my_apply_predisentangler(r0d: yastn.Tensor, r1d: yastn.Tensor, D_total, max_iter=400, tol=1e-7):
 
 
+    # Update the reduced tensors
     r0d, r1d, diff, num_of_iter = my_predisentangler_iter(r0d, r1d, D_total, max_iter, tol)
-    # we can update the tensors
 
-    # We need to perform this back contraction:
-
+    # Perform back contraction:
     r0d = r0d.swap_gate(axes=(1, 3)) # swap_gate r and a
     R0d = r0d.fuse_legs(axes=(0, 1, (2, 3)))
 
