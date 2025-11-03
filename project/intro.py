@@ -30,8 +30,6 @@ gates = peps.gates.distribute(
 )
 
 
-# initialize the system in the product state (infinite temperature)
-ancilla_psi = peps.product_peps(geometry=geometry, vectors=opt.I())
 
 
 def get_truncation_errors(t, db, D, method='NN+'):
@@ -44,12 +42,16 @@ def get_truncation_errors(t, db, D, method='NN+'):
     num_steps = int(beta/db)
     opts_svd = {'D_total': D}
 
+    # initialize the system in the product state (infinite temperature)
+    ancilla_psi = peps.product_peps(geometry=geometry, vectors=opt.I())
+
     env = peps.EnvNTU(ancilla_psi, which=method)
     infoss = []
     errors = []
 
     for _ in tqdm(range(num_steps)):
-        infos = peps.evolution_step_(env, gates=gates, opts_svd=opts_svd)
+        # infos = peps.evolution_step_(env, gates=gates, opts_svd=opts_svd)
+        infos = peps.my_evolution_step(env, gates=gates, opts_svd=opts_svd)
         infoss.append(infos)
         errors.append(peps.accumulated_truncation_error(infoss))
     return errors
@@ -60,7 +62,7 @@ def main():
     truncation_error5 = get_truncation_errors(beta, db, D=5)
     truncation_error4 = get_truncation_errors(beta, db, D=4)
 
-    np.savez('data/errors_ising_01_NN+.npz', 
+    np.savez('data/errors_ising_01_NN+_YintaiVersion_withPredisentangler.npz', 
             trunc6= truncation_error6,
             trunc5= truncation_error5,
             trunc4= truncation_error4,
@@ -69,7 +71,7 @@ def main():
     print('done')
 
 if __name__ == "__main__":
-    #main()
+    main()
 
     #sym = ancilla_psi[(0,0)].config.sym
     #print(dir(sym))

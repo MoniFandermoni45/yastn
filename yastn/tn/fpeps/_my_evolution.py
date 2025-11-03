@@ -297,7 +297,8 @@ def apply_bipartite_metric(fgf, r0dr1d: yastn.Tensor, pinv_cutoffs, dirn):
         G = G.transpose(axes=(2,3,0,1)) # rr ll rr' ll'
 
     # rank-1 approximation
-    Gremove = G.remove_zero_blocks() # needed for sth?
+    #Gremove = G.remove_zero_blocks() # needed for sth?
+    Gremove = G
     G0, S, G1 = yastn.linalg.svd_with_truncation(Gremove, axes=((0, 2), (1,3)), policy='lowrank', D_block=1, D_total=1) # split onto two parts
     #fid = (S.norm() / G.norm()).item()
     #eat_metric_error = (max(0., 1 - fid ** 2)) ** 0.5
