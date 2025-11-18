@@ -37,7 +37,9 @@ gates = peps.gates.distribute(
 
 # initialize the system in the product state (infinite temperature)
 ancilla_psi = peps.product_peps(geometry=geometry, vectors=opt.I())
-
+tensor = ancilla_psi[(0,0)]
+tensor = yastn.unfuse_legs(tensor, axes=(4))
+print(tensor.s)
 
 env = peps.EnvNTU(ancilla_psi, which='NN')
 #env = peps.EnvCTM(ancilla_psi)

@@ -41,37 +41,31 @@ def decompose_A_and_B(env, bond):
     if isinstance(psi, peps.Peps2Layers):
         psi = psi.ket  # to make it work with CtmEnv
 
-    if bond is None: # if bond is not specified, take all bonds
-        bonds = psi.bonds()
-    else:
-        bonds = [bond]
+    dirn = psi.nn_bond_dirn(bond) # take the direction of the bond
+    s0, s1 = bond # if l_ordered else bond[::-1] # implement later
 
-    for bond in bonds:
-        dirn = psi.nn_bond_dirn(bond) # take the direction of the bond
-        s0, s1 = bond # if l_ordered else bond[::-1] # implement later
-
-        tensor_A = psi[s0]
-        tensor_B = psi[s1]
+    tensor_A = psi[s0]
+    tensor_B = psi[s1]
 
 
-        #Raxis = 0 meaning specified axes go to the front
-        # we want to split the last axis before we do the QR
-        tensor_A = tensor_A.unfuse_legs(axes=4) # t l b r s a <- what we assume
-        tensor_B = tensor_B.unfuse_legs(axes=4) # t l b r s a
+    #Raxis = 0 meaning specified axes go to the front
+    # we want to split the last axis before we do the QR
+    tensor_A = tensor_A.unfuse_legs(axes=4) # t l b r s a <- what we assume
+    tensor_B = tensor_B.unfuse_legs(axes=4) # t l b r s a
 
 
-        if dirn == 'h' or  dirn == 'lr':  # Horizontal gate, "lr" ordered
+    if dirn == 'h' or  dirn == 'lr':  # Horizontal gate, "lr" ordered
 
-            # perform QR:
-            # we can immedietely specify the Q axis, we keep ancillas always at the end
-            Q0d, R0d = tensor_A.qr(axes=((0, 1, 2, 4), (3, 5)), sQ=-1, Qaxis=3)  # t l b rr s @ rr r a
-            Q1d, R1d = tensor_B.qr(axes=((0, 2, 3, 4), (1, 5)), sQ=1, Qaxis=1, Raxis=1)  # t ll b r s @ l ll a
+        # perform QR:
+        # we can immedietely specify the Q axis, we keep ancillas always at the end
+        Q0d, R0d = tensor_A.qr(axes=((0, 1, 2, 4), (3, 5)), sQ=-1, Qaxis=3)  # t l b rr s @ rr r a
+        Q1d, R1d = tensor_B.qr(axes=((0, 2, 3, 4), (1, 5)), sQ=1, Qaxis=1, Raxis=1)  # t ll b r s @ l ll a
 
 
-        else: # dirn == 'v':  # Vertical gate, "tb" ordered
+    else: # dirn == 'v':  # Vertical gate, "tb" ordered
 
-            Q0d, R0d = tensor_A.qr(axes=((0, 1, 3, 4), (2, 5)), sQ=1, Qaxis=2)  # t l bb r s @ bb b a
-            Q1d, R1d = tensor_B.qr(axes=((1, 2, 3, 4), (0, 5)), sQ=-1, Qaxis=0, Raxis=1)  # tt l b r s @ t tt a
+        Q0d, R0d = tensor_A.qr(axes=((0, 1, 3, 4), (2, 5)), sQ=1, Qaxis=2)  # t l bb r s @ bb b a
+        Q1d, R1d = tensor_B.qr(axes=((1, 2, 3, 4), (0, 5)), sQ=-1, Qaxis=0, Raxis=1)  # tt l b r s @ t tt a
     
     return Q0d, R0d, Q1d, R1d
 
