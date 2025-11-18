@@ -4,6 +4,7 @@ import numpy as np
 #import matplotlib.pyplot as plt
 from tqdm import tqdm
 from yastn.tn.fpeps._my_evolution import my_evolution_step
+from yastn.tn.fpeps._evolution import evolution_step_, my_evolution_step
 
 from yastn.tn.fpeps.gates import gate_nn_Ising, gate_local_field
 
@@ -58,7 +59,9 @@ def get_truncation_errors(t, db, D, method='NN+'):
     errors = []
 
     for _ in tqdm(range(num_steps)):
-        infos = my_evolution_step(env, gates=gates, opts_svd=opts_svd, methodType='method_1')
+        #infos = my_evolution_step(env, gates=gates, opts_svd=opts_svd, methodType='method_1')
+        #infos = evolution_step_(env, gates=gates, opts_svd=opts_svd)
+        infos = my_evolution_step(env, gates, opts_svd=opts_svd)
         infoss.append(infos)
         errors.append(peps.accumulated_truncation_error(infoss))
     return errors
@@ -69,7 +72,7 @@ def main():
     truncation_error5 = get_truncation_errors(beta, db, D=5)
     truncation_error4 = get_truncation_errors(beta, db, D=4)
 
-    np.savez('data/errors_ising_01_NN+_withPredisentangler_myVersion_version_1_correct.npz', 
+    np.savez('data/errors_ising_01_NN+_withPredisentangler_Yintai_version.npz', 
             trunc6= truncation_error6,
             trunc5= truncation_error5,
             trunc4= truncation_error4,

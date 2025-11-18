@@ -35,7 +35,6 @@ def decompose_A_and_B(env, bond):
         Q1d: tt l b r s
         R1d: t tt a
     '''
-    
 
     psi = env.psi
 
@@ -60,12 +59,8 @@ def decompose_A_and_B(env, bond):
         tensor_A = tensor_A.unfuse_legs(axes=4) # t l b r s a <- what we assume
         tensor_B = tensor_B.unfuse_legs(axes=4) # t l b r s a
 
-        #print('TensorA:', tensor_A.get_shape())
-
 
         if dirn == 'h' or  dirn == 'lr':  # Horizontal gate, "lr" ordered
-
-            #print('Doing horizontal bond')
 
             # perform QR:
             # we can immedietely specify the Q axis, we keep ancillas always at the end
@@ -75,14 +70,9 @@ def decompose_A_and_B(env, bond):
 
         else: # dirn == 'v':  # Vertical gate, "tb" ordered
 
-            #print('Doing vertical bond')
-
             Q0d, R0d = tensor_A.qr(axes=((0, 1, 3, 4), (2, 5)), sQ=1, Qaxis=2)  # t l bb r s @ bb b a
             Q1d, R1d = tensor_B.qr(axes=((1, 2, 3, 4), (0, 5)), sQ=-1, Qaxis=0, Raxis=1)  # tt l b r s @ t tt a
     
-    #print('Results:')
-    #print('Q0d:', Q0d.get_shape())
-
     return Q0d, R0d, Q1d, R1d
 
 def contract_back_reduced_tensors(Q0d: yastn.Tensor, Q1d: yastn.Tensor, r0d: yastn.Tensor, r1d: yastn.Tensor, dirn):
@@ -145,7 +135,7 @@ def my_evolution_step(env: peps.EnvNTU, gates, opts_svd, methodType, method='mpo
             # the unfuse of physical and ancilla happens here
             Q0d, R0d, Q1d, R1d = decompose_A_and_B(env, bond)
 
-            # 2, Get the metric based on the sites s0, s1
+            # 2. Get the metric based on the sites s0, s1
             dirn = psi.nn_bond_dirn(bond) # take the direction of the bond
 
             if methodType == 'method_2':
