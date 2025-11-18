@@ -61,7 +61,7 @@ def get_truncation_errors(t, db, D, method='NN+'):
     for _ in tqdm(range(num_steps)):
         #infos = my_evolution_step(env, gates=gates, opts_svd=opts_svd, methodType='method_1')
         #infos = evolution_step_(env, gates=gates, opts_svd=opts_svd)
-        infos = my_evolution_step(env, gates, opts_svd=opts_svd)
+        infos, _ = my_evolution_step(env, gates, opts_svd=opts_svd)
         infoss.append(infos)
         errors.append(peps.accumulated_truncation_error(infoss))
     return errors

@@ -142,7 +142,7 @@ def my_evolution_step(env: peps.EnvNTU, gates, opts_svd, methodType, method='mpo
             # 3. Apply the metric to R0dR1d to get R0dR1d_tilde
 
             # 4. Put this to modified Yintai's procedure -> we get (pre)disentangler
-            R0d, R1d, _, _ = my_apply_predisentangler(R0d, R1d, D_total, methodType=methodType, metric=fgf, pinv_cutoffs=pinv_cutoffs, dirn=dirn)
+            R0d, R1d, _, _, r0dr1d = my_apply_predisentangler(R0d, R1d, D_total, methodType=methodType, metric=fgf, pinv_cutoffs=pinv_cutoffs, dirn=dirn)
             tensor_A, tensor_B = contract_back_reduced_tensors(Q0d, Q1d, R0d, R1d, dirn)
 
             tensor_A = tensor_A.fuse_legs(axes=(0,1,2,3,(4,5)))
@@ -158,19 +158,20 @@ def my_evolution_step(env: peps.EnvNTU, gates, opts_svd, methodType, method='mpo
             info = peps.truncate_(env, opts_svd, (s0, s1), fix_metric, pinv_cutoffs, max_iter, tol_iter, initialization)
             infos.append(info)
         
-    return infos
+    # convention for rodr1d: rr a ll a'
+    return infos, r0dr1d, R0d, R1d
 
 
 def my_apply_predisentangler(r0d: yastn.Tensor, r1d: yastn.Tensor, D_total, methodType, metric, pinv_cutoffs, dirn, max_iter=400, tol=1e-7):
     '''
     Helper function, returns updated by application of optimal predisentangler reduced tensors, ready for back contraction
-    returns (r0d, r1d, diff, num_of_iter)
+    returns (r0d, r1d, diff, num_of_iter, r0dr1d: converged central tensor)
     '''
 
     # Update the reduced tensors
-    r0d, r1d, diff, num_of_iter = my_predisentangler_iter(r0d, r1d, D_total, max_iter, methodType=methodType, metric=metric, tol=tol, pinv_cutoffs=pinv_cutoffs, dirn=dirn)
+    r0d, r1d, diff, num_of_iter, r0dr1d = my_predisentangler_iter(r0d, r1d, D_total, max_iter, methodType=methodType, metric=metric, tol=tol, pinv_cutoffs=pinv_cutoffs, dirn=dirn)
 
-    return r0d, r1d, diff, num_of_iter
+    return r0d, r1d, diff, num_of_iter, r0dr1d
 
 def my_predisentangler_iter(r0d:yastn.Tensor, r1d:yastn.Tensor, D_total, max_iter, methodType, pinv_cutoffs, dirn, metric=None, tol=1e-7):
     '''
@@ -179,6 +180,7 @@ def my_predisentangler_iter(r0d:yastn.Tensor, r1d:yastn.Tensor, D_total, max_ite
     r1d: "right" reduced tensor,
     diff: difference in the convergence,
     ii: number of iterations
+    r0dr1d: converged central tensor
     )
     '''
 
@@ -203,7 +205,8 @@ def my_predisentangler_iter(r0d:yastn.Tensor, r1d:yastn.Tensor, D_total, max_ite
         # we obtain the truncated middle
         r0dr1d_new = yastn.tensordot(r0dr1d_new, v, axes=(2, 0)) # rr a ll a' (My version)
 
-        g = build_predisentangler_g(r0dr1d, r0dr1d_new.conj()) # a a* a' a'* <- Yintai and my version
+        g = build_predisentangler_g(r0dr1d, r0dr1d_new.conj()) # a a^ a' a'^ <- Yintai and my version (here a^ denotes the side from the r0dr1d)
+
 
         # xx s a s' a' yy <- Yintai version
         # my version rr a ll a'
@@ -225,13 +228,12 @@ def my_predisentangler_iter(r0d:yastn.Tensor, r1d:yastn.Tensor, D_total, max_ite
             #diff = (r0dr1d.fuse_legs(axes=((0, 1, 2), (3, 4, 5))) - r0dr1d_new.fuse_legs(axes=((0, 1, 2), (3, 4, 5)))).norm(p="fro") / r0dr1d.fuse_legs(axes=((0, 1, 2), (3, 4, 5))).norm(p="fro")
         diff = (r0dr1d.transpose(axes=(0,1,3,2)).fuse_legs(axes=((0, 1), (2, 3))) - r0dr1d_new.fuse_legs(axes=((0, 1), (2, 3)))).norm(p="fro") / r0dr1d.transpose(axes=(0,1,3,2)).fuse_legs(axes=((0, 1), (2,3))).norm(p="fro")
 
+
         r0dr1d = r0dr1d_new
         r0dr1d = r0dr1d.transpose(axes=(0,1,3,2)) # rr a ll a'
-        # we may probably transpose back here to make sure we match the pattern rr a ll a'
 
         if diff < tol:
             # if the difference is sufficiently small
-
 
             # Yintai version: r0dr1d: xx s a s' a' yy
             # My version    : r0dr1d: rr a ll a'
@@ -244,7 +246,7 @@ def my_predisentangler_iter(r0d:yastn.Tensor, r1d:yastn.Tensor, D_total, max_ite
                 r0dr1d = r0dr1d.transpose(axes=(0,2,1,3)) # rr a ll a'
 
 
-            u, s, v = yastn.svd_with_truncation(r0dr1d, axes=((0,1), (2,3)), sU=r0d.s[1], Uaxis = 1, D_total=r0d.get_shape(axes=1)) # u: r rr a, v: l ll a'
+            u, s, v = yastn.svd_with_truncation(r0dr1d, axes=((0,1), (2,3)), sU=r0d.s[1], Uaxis = 1, D_total=r0d.get_shape(axes=1), tol=1e-15) # u: r rr a, v: l ll a'
 
             # Redestribute the singular values
             s = s.sqrt()
@@ -253,7 +255,7 @@ def my_predisentangler_iter(r0d:yastn.Tensor, r1d:yastn.Tensor, D_total, max_ite
             r1d = s.broadcast(v, axes=0) # l ll a'
             break
 
-    return r0d, r1d, diff, ii
+    return r0d, r1d, diff, ii, r0dr1d
 
 def build_predisentangler_g(r0dr1d:yastn.Tensor, r0dr1d_conj:yastn.Tensor):
     # r0dr1d xx s a s' a' yy <- Yintai version (xx==rr, yy==ll, probably)
@@ -264,7 +266,7 @@ def build_predisentangler_g(r0dr1d:yastn.Tensor, r0dr1d_conj:yastn.Tensor):
     u, s, v = Eg.svd(axes=((0, 1), (2, 3)))
     Eg = yastn.tensordot(v.conj(), u.conj(), axes=(0, 2)) # a* a'* a a' (&) # to be verified!
     Eg = Eg.transpose(axes=(0, 2, 1, 3))
-    return Eg
+    return Eg # format: a* a a'* a' ( here a* denotes the front)
 
 def apply_bipartite_metric(fgf, r0dr1d: yastn.Tensor, pinv_cutoffs, dirn):
     '''
