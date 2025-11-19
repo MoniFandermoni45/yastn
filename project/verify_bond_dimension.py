@@ -1,4 +1,5 @@
 import yastn
+import matplotlib.pyplot as plt
 import numpy as np
 import yastn.tn.fpeps as peps
 from yastn.tn.fpeps._my_evolution import my_evolution_step
@@ -39,11 +40,28 @@ def get_singular_values(matrix):
     singular_values = np.diag(s.to_numpy())
     return singular_values
 
+def svd_approx(A: yastn.Tensor, n):
+    """
+    Return the best rank-n approximation of matrix A
+    using the first n singular values from the SVD.
+    """
+    A = A.to_numpy()
+
+    # Full SVD
+    U, S, Vt = np.linalg.svd(A, full_matrices=False)
+
+    # Keep only first n components
+    U_n = U[:, :n]
+    S_n = S[:n]
+    Vt_n = Vt[:n, :]
+
+    # Reconstruct rank-n approximation
+    return U_n @ np.diag(S_n) @ Vt_n
 
 def main():
     beta = parameters['beta']
     db = parameters['db']
-    _, r0dr1d, R0d, R1d =  get_truncation_errors(t=2.643, db=db, D=5, method='NN+')
+    _, r0dr1d, R0d, R1d =  get_truncation_errors(t=beta, db=db, D=6, method='NN+')
 
     # at first we need to fuse
     r0dr1d = r0dr1d.fuse_legs(axes=((0,1), (2,3)))
@@ -57,8 +75,23 @@ def main():
     print()
     print(singular_values_truncated)
 
-    print('Number of all singular values:', len(singular_values_main))
-    print('Number of truncated singular values:', len(singular_values_truncated))
+    # print('Number of all singular values:', len(singular_values_main))
+    # print('Number of truncated singular values:', len(singular_values_truncated))
+
+    errors = []
+    for i in range(12, len(singular_values_main)+1):
+        err = np.linalg.norm(r0dr1d_truncated.to_numpy() - svd_approx(r0dr1d, i), ord='fro')
+        errors.append(err)
+    
+    # np.save('data/bond_dim_diff_D=6_002.npy', np.array(list(range(12, len(singular_values_main)+1))))
+    # np.save('data/errors_from_bond_dim_D=6_002_.npy', errors)
+    np.save('data/main_singular_values_D=6_003.npy', singular_values_main)
+
+    
+    # plt.semilogy(list(range(10, 41)), errors, '*')
+    # plt.show()
+
+
 
 if __name__ == '__main__':
     main()

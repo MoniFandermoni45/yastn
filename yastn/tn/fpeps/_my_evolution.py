@@ -246,7 +246,7 @@ def my_predisentangler_iter(r0d:yastn.Tensor, r1d:yastn.Tensor, D_total, max_ite
                 r0dr1d = r0dr1d.transpose(axes=(0,2,1,3)) # rr a ll a'
 
 
-            u, s, v = yastn.svd_with_truncation(r0dr1d, axes=((0,1), (2,3)), sU=r0d.s[1], Uaxis = 1, D_total=r0d.get_shape(axes=1), tol=1e-15) # u: r rr a, v: l ll a'
+            u, s, v = yastn.svd_with_truncation(r0dr1d, axes=((0,1), (2,3)), sU=r0d.s[1], Uaxis = 1, D_total=r0d.get_shape(axes=1)) # u: r rr a, v: l ll a'
 
             # Redestribute the singular values
             s = s.sqrt()
